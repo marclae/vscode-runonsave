@@ -1,5 +1,5 @@
 {
-	"name": "RunOnSave",
+	"name": "runonsave",
 	"displayName": "Run on Save",
 	"description": "Run commands when a file is saved in vscode.",
 	"icon": "images/save-icon.png",
@@ -7,7 +7,7 @@
 		"color": "#5c2d91",
 		"theme": "light"
 	},
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"publisher": "emeraldwalk",
 	"license": "Apache-2.0",
 	"homepage": "https://github.com/emeraldwalk/vscode-runonsave/blob/master/README.md",
@@ -19,7 +19,7 @@
 		"url": "https://github.com/emeraldwalk/vscode-runonsave/issues"
 	},
 	"engines": {
-		"vscode": "^0.10.1"
+		"vscode": "^1.74.0"
 	},
 	"categories": [
 		"Other"
@@ -31,11 +31,11 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "extension.emeraldwalk.enableRunOnSave",
+				"command": "runonsave-extension.enableRunOnSave",
 				"title": "Run On Save: Enable"
 			},
 			{
-				"command": "extension.emeraldwalk.disableRunOnSave",
+				"command": "runonsave-extension.disableRunOnSave",
 				"title": "Run On Save: Disable"
 			}
 		],
@@ -89,17 +89,27 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "tsc -p ./",
-		"compile": "tsc -watch -p ./",
-		"postinstall": "node ./node_modules/vscode/bin/install"
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile && npm run lint",
+		"lint": "eslint src --ext ts",
+		"test": "node ./out/test/runTest.js"
 	},
 	"devDependencies": {
-		"@types/mocha": "^5.2.5",
-		"@types/node": "^10.14.12",
-		"typescript": "^3.3.1",
-		"vscode": "^1.1.28"
+		"@types/vscode": "^1.74.0",
+		"@types/glob": "^8.0.0",
+		"@types/mocha": "^10.0.1",
+		"@types/node": "16.x",
+		"@typescript-eslint/eslint-plugin": "^5.45.0",
+		"@typescript-eslint/parser": "^5.45.0",
+		"eslint": "^8.28.0",
+		"glob": "^8.0.3",
+		"mocha": "^10.1.0",
+		"typescript": "^4.9.3",
+		"@vscode/test-electron": "^2.2.0"
 	},
 	"dependencies": {
-		"@types/vscode": "^1.36.0"
+		"@types/vscode": "^1.74.0"
 	}
 }

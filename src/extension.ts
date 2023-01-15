@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import {exec} from 'child_process';
+import { exec } from 'child_process';
 
 export function activate(context: vscode.ExtensionContext): void {
 
@@ -13,16 +13,20 @@ export function activate(context: vscode.ExtensionContext): void {
 		disposeStatus.dispose();
 	});
 
-	vscode.commands.registerCommand('extension.emeraldwalk.enableRunOnSave', () => {
+	vscode.commands.registerCommand('runonsave-extension.enableRunOnSave', () => {
 		extension.isEnabled = true;
 	});
 
-	vscode.commands.registerCommand('extension.emeraldwalk.disableRunOnSave', () => {
+	vscode.commands.registerCommand('runonsave-extension.disableRunOnSave', () => {
 		extension.isEnabled = false;
 	});
 
 	vscode.workspace.onDidSaveTextDocument((document: vscode.TextDocument) => {
-		extension.runCommands(document);
+		extension.runCommands(document.uri);
+	});
+
+	vscode.workspace.onDidSaveNotebookDocument((document: vscode.NotebookDocument) => {
+		extension.runCommands(document.uri);
 	});
 }
 
@@ -47,35 +51,40 @@ class RunOnSaveExtension {
 	constructor(context: vscode.ExtensionContext) {
 		this._context = context;
 		this._outputChannel = vscode.window.createOutputChannel('Run On Save');
-		this.loadConfig();
+		this._config = this.loadConfig();
 	}
 
 	/** Recursive call to run commands. */
 	private _runCommands(
 		commands: Array<ICommand>,
-		document: vscode.TextDocument
+		documentUri: vscode.Uri
 	): void {
 		if (commands.length) {
 			var cfg = commands.shift();
 
-			this.showOutputMessage(`*** cmd start: ${cfg.cmd}`);
+			if (cfg !== undefined) {
+				this.showOutputMessage(`*** cmd start: ${cfg.cmd}`);
 
-			var child = exec(cfg.cmd, this._getExecOption(document));
-			child.stdout.on('data', data => this._outputChannel.append(data));
-			child.stderr.on('data', data => this._outputChannel.append(data));
-			child.on('error', (e) => {
-				this.showOutputMessage(e.message);
-			});
-			child.on('exit', (e) => {
-				// if sync
-				if (!cfg.isAsync) {
-					this._runCommands(commands, document);
+				var child = exec(cfg.cmd, this._getExecOption(documentUri));
+
+				if (child.stdout !== null && child.stderr !== null) {
+					child.stdout.on('data', data => this._outputChannel.append(data));
+					child.stderr.on('data', data => this._outputChannel.append(data));
+					child.on('error', (e) => {
+						this.showOutputMessage(e.message);
+					});
+					child.on('exit', (e) => {
+						// if sync
+						if (cfg !== undefined && !cfg.isAsync) {
+							this._runCommands(commands, documentUri);
+						}
+					});
 				}
-			});
 
-			// if async, go ahead and run next command
-			if (cfg.isAsync) {
-				this._runCommands(commands, document);
+				// if async, go ahead and run next command
+				if (cfg.isAsync) {
+					this._runCommands(commands, documentUri);
+				}
 			}
 		}
 		else {
@@ -86,11 +95,11 @@ class RunOnSaveExtension {
 	}
 
 	private _getExecOption(
-		document: vscode.TextDocument
-	): {shell: string, cwd: string} {
+		documentUri: vscode.Uri
+	): { shell: string, cwd: string } {
 		return {
 			shell: this.shell,
-			cwd: this._getWorkspaceFolderPath(document.uri),
+			cwd: String(this._getWorkspaceFolderPath(documentUri)),
 		};
 	}
 
@@ -126,15 +135,15 @@ class RunOnSaveExtension {
 		return this._config.commands || [];
 	}
 
-	public loadConfig(): void {
-		this._config = <IConfig><any>vscode.workspace.getConfiguration('emeraldwalk.runonsave');
+	public loadConfig(): IConfig {
+		return <IConfig><any>vscode.workspace.getConfiguration('emeraldwalk.runonsave');
 	}
 
 	/**
 	 * Show message in output channel
 	 */
 	public showOutputMessage(message?: string): void {
-		message = message || `Run On Save ${this.isEnabled ? 'enabled': 'disabled'}.`;
+		message = message || `Run On Save ${this.isEnabled ? 'enabled' : 'disabled'}.`;
 		this._outputChannel.appendLine(message);
 	}
 
@@ -147,17 +156,20 @@ class RunOnSaveExtension {
 		return vscode.window.setStatusBarMessage(message);
 	}
 
-	public runCommands(document: vscode.TextDocument): void {
-		if(this.autoClearConsole) {
+	public runCommands(documentUri: vscode.Uri): void {
+		this.showOutputMessage("Blub")
+		const fileName = documentUri.fsPath;
+
+		if (this.autoClearConsole) {
 			this._outputChannel.clear();
 		}
 
-		if(!this.isEnabled || this.commands.length === 0) {
+		if (!this.isEnabled || this.commands.length === 0) {
 			this.showOutputMessage();
 			return;
 		}
 
-		var match = (pattern: string) => pattern && pattern.length > 0 && new RegExp(pattern).test(document.fileName);
+		var match = (pattern: string) => pattern && pattern.length > 0 && new RegExp(pattern).test(fileName);
 
 		var commandConfigs = this.commands
 			.filter(cfg => {
@@ -185,30 +197,30 @@ class RunOnSaveExtension {
 		for (const cfg of commandConfigs) {
 			let cmdStr = cfg.cmd;
 
-			const extName = path.extname(document.fileName);
-			const workspaceFolderPath = this._getWorkspaceFolderPath(document.uri);
+			const extName = path.extname(fileName);
+			const workspaceFolderPath = String(this._getWorkspaceFolderPath(documentUri));
 			const relativeFile = path.relative(
 				workspaceFolderPath,
-				document.uri.fsPath
+				documentUri.fsPath
 			);
 
-			cmdStr = cmdStr.replace(/\${file}/g, `${document.fileName}`);
+			cmdStr = cmdStr.replace(/\${file}/g, `${fileName}`);
 
 			// DEPRECATED: workspaceFolder is more inline with vscode variables,
 			// but leaving old version in place for any users already using it.
 			cmdStr = cmdStr.replace(/\${workspaceRoot}/g, workspaceFolderPath);
 
 			cmdStr = cmdStr.replace(/\${workspaceFolder}/g, workspaceFolderPath);
-			cmdStr = cmdStr.replace(/\${fileBasename}/g, path.basename(document.fileName));
-			cmdStr = cmdStr.replace(/\${fileDirname}/g, path.dirname(document.fileName));
+			cmdStr = cmdStr.replace(/\${fileBasename}/g, path.basename(fileName));
+			cmdStr = cmdStr.replace(/\${fileDirname}/g, path.dirname(fileName));
 			cmdStr = cmdStr.replace(/\${fileExtname}/g, extName);
-			cmdStr = cmdStr.replace(/\${fileBasenameNoExt}/g, path.basename(document.fileName, extName));
+			cmdStr = cmdStr.replace(/\${fileBasenameNoExt}/g, path.basename(fileName, extName));
 			cmdStr = cmdStr.replace(/\${relativeFile}/g, relativeFile);
 			cmdStr = cmdStr.replace(/\${cwd}/g, process.cwd());
 
 			// replace environment variables ${env.Name}
 			cmdStr = cmdStr.replace(/\${env\.([^}]+)}/g, (sub: string, envName: string) => {
-				return process.env[envName];
+				return String(process.env[envName]);
 			});
 
 			commands.push({
@@ -217,6 +229,6 @@ class RunOnSaveExtension {
 			});
 		}
 
-		this._runCommands(commands, document);
+		this._runCommands(commands, documentUri);
 	}
 }
